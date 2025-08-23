@@ -1,16 +1,22 @@
 {
   "name": "power-monitoring-backend",
   "scripts": {
-    "dev": "bun run --hot src/app.ts"
+    "dev": "bun run --watch src/app.ts",
+    "prettier": "bunx prettier --write .",
+    "build": "bun build ./src/app.ts --outdir ./dist --target node",
+    "start": "bun run dist/app.js"
   },
   "dependencies": {
     "@hono/node-server": "^1.15.0",
     "@types/jsonwebtoken": "^9.0.10",
+    "bcrypt": "^6.0.0",
     "hono": "^4.8.3",
     "jsonwebtoken": "^9.0.2",
-    "pg": "^8.16.3"
+    "pg": "^8.16.3",
+    "prettier": "^3.6.2"
   },
   "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
     "@types/bun": "latest",
     "@types/pg": "^8.15.4"
   }

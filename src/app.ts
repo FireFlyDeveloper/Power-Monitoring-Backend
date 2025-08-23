@@ -1,12 +1,12 @@
-import { Context, Hono } from 'hono'
-import { authMiddleware } from './middlewares/authMiddleware'
+import { Context, Hono } from "hono";
+import { authMiddleware } from "./middlewares/authMiddleware";
 
-const app = new Hono()
+const app = new Hono();
 
 app.get("/ping", (c: Context) => {
-    return c.text("pong🚀🎊");
+  return c.text("pong🚀🎊");
 });
 
-app.use('*', authMiddleware);
+app.use("*", authMiddleware);
 
-export default app
+export default app;
