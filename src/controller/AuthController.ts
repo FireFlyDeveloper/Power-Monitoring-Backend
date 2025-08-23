@@ -4,13 +4,13 @@ import { generateToken } from "../utils/tokenizer";
 
 export class AuthController {
   async refresh(ctx: Context) {
-    const { name } = await ctx.req.json();
-    console.log("Refresh token data:", name);
-    const token = generateToken({ name });
+    const user = await ctx.req.json();
+    console.log("Refresh token data:", user.username);
+    const token = generateToken(user);
     return ctx.json({
       message: "Token refreshed",
       token,
-      authUserState: { name },
+      authUserState: { username: user.username },
     });
   }
 
