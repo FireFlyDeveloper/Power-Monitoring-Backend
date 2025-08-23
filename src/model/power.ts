@@ -22,4 +22,4 @@ const SELECT_BY_DATE: string = `
       ORDER BY created_at DESC;
       `;
 
-export { CREATE, SELECT_BY_DATE };
+export { CREATE, INSERT, SELECT_BY_DATE };
