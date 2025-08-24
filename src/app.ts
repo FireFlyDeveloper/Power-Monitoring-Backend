@@ -1,21 +1,23 @@
 import { Context, Hono } from "hono";
-import AuthController from "./controller/AuthController";
-import PowerController from "./controller/PowerController";
+import authRoute from "./routes/auth";
+import powerRoute from "./routes/power";
 
 const app = new Hono();
 
-const authController = new AuthController();
-const powerController = new PowerController();
+app.notFound((c) => {
+  return c.text("Not found", 404);
+});
 
-async function initApp() {
-  await authController.create_database();
-  await powerController.create_database();
+app.onError((err, c) => {
+  console.error(`${err}`);
+  return c.text("Internal error", 500);
+});
 
-  app.get("/ping", (c: Context) => {
-    return c.text("pong🚀🎊");
-  });
+app.get("/ping", (c: Context) => {
+  return c.text("pong🚀🎊");
+});
 
-  return app;
-}
+app.route("/auth", authRoute);
+app.route("/power", powerRoute);
 
-export default await initApp();
+export default app;
