@@ -1,10 +1,21 @@
 import { Context, Hono } from "hono";
-import { authMiddleware } from "./middlewares/authMiddleware";
+import AuthController from "./controller/AuthController";
+import PowerController from "./controller/PowerController";
 
 const app = new Hono();
 
-app.get("/ping", (c: Context) => {
-  return c.text("pong🚀🎊");
-});
+const authController = new AuthController();
+const powerController = new PowerController();
 
-export default app;
+async function initApp() {
+  await authController.create_database();
+  await powerController.create_database();
+
+  app.get("/ping", (c: Context) => {
+    return c.text("pong🚀🎊");
+  });
+
+  return app;
+}
+
+export default await initApp();

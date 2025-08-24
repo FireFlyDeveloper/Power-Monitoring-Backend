@@ -1,8 +1,12 @@
 import { Context } from "hono";
-import { getUser, updateUser } from "../service/authService";
+import { getUser, updateUser, createTable } from "../service/authService";
 import { generateToken } from "../utils/tokenizer";
 
-export class AuthController {
+export default class AuthController {
+  async create_database(): Promise<void> {
+    await createTable();
+  }
+
   async refresh(ctx: Context) {
     const user = await ctx.req.json();
     console.log("Refresh token data:", user.username);
