@@ -7,6 +7,4 @@ app.get("/ping", (c: Context) => {
   return c.text("pong🚀🎊");
 });
 
-app.use("*", authMiddleware);
-
 export default app;

@@ -1,7 +1,7 @@
 import { Context } from "hono";
 import { createRecord, selectByDate } from "../service/powerService";
 
-export class MeasurementController {
+export class PowerController {
   async create(ctx: Context) {
     const { temperature, rpm, kwh, voltage } = await ctx.req.json();
     const measurement = await createRecord(temperature, rpm, kwh, voltage);

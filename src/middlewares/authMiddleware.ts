@@ -18,3 +18,17 @@ export const authMiddleware: MiddlewareHandler = async (
     return c.json({ message: "Unauthorized" }, 401);
   }
 };
+
+export const apiKeyMiddleware: MiddlewareHandler = async (
+  c: Context,
+  next: Next,
+) => {
+  const apiKey = c.req.header("x-api-key");
+  const validApiKey: string = process.env.API_KEY || "";
+
+  if (apiKey !== validApiKey) {
+    return c.json({ message: "Forbidden" }, 403);
+  }
+
+  await next();
+};
