@@ -1,10 +1,11 @@
-import { Context, Hono } from "hono";
+import { Hono } from "hono";
 import { createBunWebSocket } from "hono/bun";
 import authRoute from "./routes/auth";
 import powerRoute from "./routes/power";
+import websocketRoute from "./routes/websocket";
+import healthRoute from "./routes/health";
 
-const { upgradeWebSocket, websocket } = createBunWebSocket();
-
+const { websocket } = createBunWebSocket();
 const app = new Hono();
 
 app.notFound((c) => {
@@ -16,29 +17,12 @@ app.onError((err, c) => {
   return c.text("Internal error", 500);
 });
 
-app.get(
-  "/ws",
-  upgradeWebSocket((c) => {
-    return {
-      onMessage(event, ws) {
-        console.log(`Message from client: ${event.data}`);
-        ws.send("Hello from server!");
-      },
-      onClose: () => {
-        console.log("Connection closed");
-      },
-    };
-  }),
-);
-
-app.get("/ping", (c: Context) => {
-  return c.text("pong🚀🎊");
-});
-
+app.route("/ws", websocketRoute);
+app.route("/health", healthRoute);
 app.route("/auth", authRoute);
 app.route("/power", powerRoute);
 
 export default {
   fetch: app.fetch,
   websocket,
-}
+};
