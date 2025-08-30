@@ -3,7 +3,7 @@ import {
   createRecord,
   selectByDate,
   createTable,
-} from "../service/powerService";
+} from "../service/weatherService";
 
 export default class PowerController {
   async create_database(): Promise<void> {
@@ -11,11 +11,11 @@ export default class PowerController {
   }
 
   async create(ctx: Context) {
-    const { kwh, voltage } = await ctx.req.json();
-    const measurement = await createRecord(kwh, voltage);
+    const { temperature, rpm } = await ctx.req.json();
+    const measurement = await createRecord(temperature, rpm);
 
     return ctx.json({
-      message: "Measurement created successfully",
+      message: "Weather created successfully",
       data: measurement,
     });
   }
@@ -25,7 +25,7 @@ export default class PowerController {
     const measurements = await selectByDate(date);
 
     return ctx.json({
-      message: `Measurements for ${date ?? "today"}`,
+      message: `Weather for ${date ?? "today"}`,
       data: measurements,
     });
   }

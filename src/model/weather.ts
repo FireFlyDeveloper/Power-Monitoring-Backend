@@ -1,21 +1,21 @@
 const CREATE: string = `
-  CREATE TABLE IF NOT EXISTS measurements (
+  CREATE TABLE IF NOT EXISTS weather (
     id SERIAL PRIMARY KEY,
-    kwh NUMERIC NOT NULL,
-    voltage NUMERIC NOT NULL,
+    temperature NUMERIC NOT NULL,
+    rpm NUMERIC NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   )
 `;
 
 const INSERT: string = `
-      INSERT INTO measurements (kwh, voltage, created_at)
+      INSERT INTO weather (temperature, rpm, created_at)
       VALUES ($1, $2, NOW())
       RETURNING *;
       `;
 
 const SELECT_BY_DATE: string = `
       SELECT *
-      FROM measurements
+      FROM weather
       WHERE DATE(created_at) = COALESCE($1::date, CURRENT_DATE)
       ORDER BY created_at DESC;
       `;
