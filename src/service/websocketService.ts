@@ -9,6 +9,7 @@ export interface WebSocketMessage {
   type: string;
   topic?: string;
   data?: any;
+  device_uid?: string;
 }
 
 export class WebSocketService {

@@ -60,7 +60,10 @@ export class WebSocketController {
           break;
 
         case "publish":
-          if (message.topic === fixedTopic) {
+          if (
+            message.topic === fixedTopic &&
+            message.device_uid === process.env.DEVICE_UID
+          ) {
             const sentCount = webSocketService.broadcastMessage(
               fixedTopic,
               message.data,

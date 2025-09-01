@@ -1,4 +1,3 @@
-// routes/websocket.ts
 import { Hono } from "hono";
 import { createBunWebSocket } from "hono/bun";
 import { webSocketController } from "../controller/websocketController";
