@@ -1,8 +1,9 @@
 import { WSContext } from "hono/ws";
-import {
-  webSocketService,
-  WebSocketMessage,
-} from "../service/websocketService";
+import { webSocketService } from "../service/websocketService";
+import { WebSocketMessage } from "../types/types";
+import StreamService from "../service/streamService";
+
+const streamService = new StreamService();
 
 export class WebSocketController {
   handleConnection(clientId: string, ws: WSContext): void {
@@ -33,10 +34,13 @@ export class WebSocketController {
               clientId,
               fixedTopic,
             );
+
+            const data = streamService.getDataLastData();
+
             ws.send(
               JSON.stringify({
                 type: "subscribed",
-                topic: fixedTopic,
+                data,
                 success,
               }),
             );
@@ -66,8 +70,21 @@ export class WebSocketController {
           ) {
             const sentCount = webSocketService.broadcastMessage(
               fixedTopic,
-              message.data,
+              message.rpm
+                ? message.rpm
+                : message.kwh
+                  ? message.kwh
+                  : message.temperature
+                    ? message.temperature
+                    : message.voltage
+                      ? message.voltage
+                      : null,
             );
+
+            streamService.verifyData(message).catch((error) => {
+              console.error("Error verifying data:", error);
+            });
+
             ws.send(
               JSON.stringify({
                 type: "published",

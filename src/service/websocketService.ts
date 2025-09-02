@@ -1,16 +1,5 @@
 import { WSContext } from "hono/ws";
-
-export interface ClientInfo {
-  ws: WSContext;
-  subscriptions: Set<string>;
-}
-
-export interface WebSocketMessage {
-  type: string;
-  topic?: string;
-  data?: any;
-  device_uid?: string;
-}
+import { ClientInfo } from "../types/types";
 
 export class WebSocketService {
   private clients = new Map<string, ClientInfo>();

@@ -3,8 +3,12 @@ import { getUser, updateUser, createTable } from "../service/authService";
 import { generateToken } from "../utils/tokenizer";
 
 export default class AuthController {
-  async create_database(): Promise<void> {
-    await createTable();
+  constructor() {
+    const create_database = async () => {
+      await createTable();
+    };
+
+    create_database();
   }
 
   async refresh(ctx: Context) {
