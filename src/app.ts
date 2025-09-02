@@ -4,9 +4,12 @@ import authRoute from "./routes/auth";
 import measurementRoute from "./routes/measurements";
 import websocketRoute from "./routes/websocket";
 import healthRoute from "./routes/health";
+import { cors } from 'hono/cors'
 
 const { websocket } = createBunWebSocket();
 const app = new Hono();
+
+app.use('*', cors());
 
 app.notFound((c) => {
   return c.text("Not found", 404);
