@@ -1,3 +1,5 @@
+import { WSContext } from "hono/ws";
+
 export interface Data {
   rpm: number;
   kwh: number;
@@ -11,3 +13,7 @@ export const Topic = {
   TEMPERATURE: "sensor/temperature",
   VOLTAGE: "sensor/voltage",
 };
+
+export interface ClientInfo {
+  ws: WSContext;
+}
