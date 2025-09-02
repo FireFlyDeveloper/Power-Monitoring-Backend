@@ -1,123 +1,65 @@
-import { WSContext } from "hono/ws";
-import { webSocketService } from "../service/websocketService";
-import { WebSocketMessage } from "../types/types";
-import StreamService from "../service/streamService";
+import MqttService from "../service/mqttService";
+import {
+  createRecordKwh,
+  createRecordRpm,
+  createRecordTemperature,
+  createRecordVoltage,
+} from "../service/measurementService";
+import { Data, Topic } from "../types/types";
 
-const streamService = new StreamService();
+const mqttService = new MqttService();
 
-export class WebSocketController {
-  handleConnection(clientId: string, ws: WSContext): void {
-    webSocketService.addClient(clientId, ws);
+export default class WebsocketController {
+  private rpm: number = 0;
+  private kwh: number = 0;
+  private temperature: number = 0;
+  private voltage: number = 0;
 
-    ws.send(
-      JSON.stringify({
-        type: "connected",
-        clientId,
-        topic: webSocketService.getFixedTopic(),
-      }),
-    );
+  constructor() {
+    mqttService.onMessage = (topic: string, message: string) => {
+      const data = Number(message);
+      this.verifyData(topic, data);
+    };
   }
 
-  handleDisconnection(clientId: string): void {
-    webSocketService.removeClient(clientId);
-  }
+  private async verifyData(topic: string, message: number): Promise<void> {
+    switch (topic) {
+      case Topic.RPM:
+        console.log(`RPM: ${message}`);
+        this.rpm = message;
+        await createRecordRpm(message);
+        break;
 
-  handleMessage(clientId: string, event: MessageEvent, ws: WSContext): void {
-    try {
-      const message: WebSocketMessage = JSON.parse(event.data.toString());
-      const fixedTopic = webSocketService.getFixedTopic();
+      case Topic.KWH:
+        console.log(`KWH: ${message}`);
+        this.kwh = message;
+        await createRecordKwh(message);
+        break;
 
-      switch (message.type) {
-        case "subscribe":
-          if (message.topic === fixedTopic) {
-            const success = webSocketService.handleSubscription(
-              clientId,
-              fixedTopic,
-            );
+      case Topic.TEMPERATURE:
+        console.log(`Temperature: ${message}`);
+        this.temperature = message;
+        await createRecordTemperature(message);
+        break;
 
-            const data = streamService.getDataLastData();
+      case Topic.VOLTAGE:
+        console.log(`Voltage: ${message}`);
+        this.voltage = message;
+        await createRecordVoltage(message);
+        break;
 
-            ws.send(
-              JSON.stringify({
-                type: "subscribed",
-                data,
-                success,
-              }),
-            );
-          }
-          break;
-
-        case "unsubscribe":
-          if (message.topic === fixedTopic) {
-            const success = webSocketService.handleUnsubscription(
-              clientId,
-              fixedTopic,
-            );
-            ws.send(
-              JSON.stringify({
-                type: "unsubscribed",
-                topic: fixedTopic,
-                success,
-              }),
-            );
-          }
-          break;
-
-        case "publish":
-          if (
-            message.topic === fixedTopic &&
-            message.device_uid === process.env.DEVICE_UID
-          ) {
-            const sentCount = webSocketService.broadcastMessage(
-              fixedTopic,
-              message.rpm
-                ? message.rpm
-                : message.kwh
-                  ? message.kwh
-                  : message.temperature
-                    ? message.temperature
-                    : message.voltage
-                      ? message.voltage
-                      : null,
-            );
-
-            streamService.verifyData(message).catch((error) => {
-              console.error("Error verifying data:", error);
-            });
-
-            ws.send(
-              JSON.stringify({
-                type: "published",
-                topic: fixedTopic,
-                sentTo: sentCount,
-                success: sentCount > 0,
-              }),
-            );
-          }
-          break;
-
-        default:
-          ws.send(
-            JSON.stringify({
-              type: "error",
-              message: "Unknown message type",
-            }),
-          );
-      }
-    } catch (error) {
-      console.error("Error processing message:", error);
-      try {
-        ws.send(
-          JSON.stringify({
-            type: "error",
-            message: "Invalid message format",
-          }),
-        );
-      } catch (sendError) {
-        console.error("Failed to send error message:", sendError);
-      }
+      default:
+        console.log(`Unknown topic: ${topic} with message: ${message}`);
+        break;
     }
   }
-}
 
-export const webSocketController = new WebSocketController();
+  public getDataLastData(): Data {
+    return {
+      rpm: this.rpm,
+      kwh: this.kwh,
+      temperature: this.temperature,
+      voltage: this.voltage,
+    };
+  }
+}
