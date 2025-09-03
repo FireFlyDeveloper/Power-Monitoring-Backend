@@ -16,4 +16,5 @@ export const Topic = {
 
 export interface ClientInfo {
   ws: WSContext;
+  lastPing?: number;
 }

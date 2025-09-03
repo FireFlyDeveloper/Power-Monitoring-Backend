@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { createBunWebSocket } from "hono/bun";
-import { websocketController } from "../controller/websocketController";
+import { websocketController } from "../controller/WebsocketController";
 import { authMiddleware } from "../middlewares/authMiddleware";
 
 const { upgradeWebSocket } = createBunWebSocket();
@@ -20,6 +20,10 @@ websocketRoute.get(
 
       onClose(_event) {
         websocketController.handleDisconnection(clientId);
+      },
+
+      onMessage(event, ws) {
+        websocketController.handleClientMessage(clientId, ws, `${event.data}`);
       },
     };
   }),

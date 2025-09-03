@@ -1,81 +1,138 @@
-// KWH Measurements
-export const INSERT_KWH: string = `
-      INSERT INTO kwh (kwh, created_at)
-      VALUES ($1, NOW())
-      RETURNING *;
-      `;
+// ==============================
+// Configurable Names
+// ==============================
+export const TABLE_NAME = "measurements";
+export const ARCHIVE_TABLE_NAME = `archived_${TABLE_NAME}`;
+export const HOURLY_VIEW_NAME = `${TABLE_NAME}_1h`;
+export const DAILY_VIEW_NAME = `${TABLE_NAME}_1d`;
+export const UNIFIED_VIEW_NAME = `all_${TABLE_NAME}`;
 
-// Voltage Measurements
-export const INSERT_VOLTAGE: string = `
-      INSERT INTO voltage (voltage, created_at)
-      VALUES ($1, NOW())
-      RETURNING *;
-      `;
+export const RETENTION_DAYS = 30; // keep raw for 30 days
+export const HOURLY_AGG_THRESHOLD = 30; // >30 days → use hourly aggregates
+export const DAILY_AGG_THRESHOLD = 180; // >180 days → use daily aggregates
 
-// Temperature Measurements
-export const INSERT_TEMPERATURE: string = `
-      INSERT INTO temperature (temperature, created_at)
-      VALUES ($1, NOW())
-      RETURNING *;
-      `;
+// ==============================
+// Create Tables
+// ==============================
+export const CREATE_MEASUREMENTS_TABLE = `
+  CREATE TABLE IF NOT EXISTS ${TABLE_NAME} (
+    id SERIAL PRIMARY KEY,
+    sensor_type TEXT NOT NULL,
+    value NUMERIC NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
 
-// RPM Measurements
-export const INSERT_RPM: string = `
-      INSERT INTO rpm (rpm, created_at)
-      VALUES ($1, NOW())
-      RETURNING *;
-      `;
-
-// Select all measurements by date (KWH, Voltage, Temperature, RPM)
-export const SELECT_BY_DATE_ALL: string = `
-  SELECT 'kwh' AS type, id, kwh::NUMERIC AS value, created_at
-  FROM kwh
-  WHERE DATE(created_at) = COALESCE($1::date, CURRENT_DATE)
-
-  UNION ALL
-
-  SELECT 'voltage' AS type, id, voltage::NUMERIC AS value, created_at
-  FROM voltage
-  WHERE DATE(created_at) = COALESCE($1::date, CURRENT_DATE)
-
-  UNION ALL
-
-  SELECT 'temperature' AS type, id, temperature::NUMERIC AS value, created_at
-  FROM temperature
-  WHERE DATE(created_at) = COALESCE($1::date, CURRENT_DATE)
-
-  UNION ALL
-
-  SELECT 'rpm' AS type, id, rpm::NUMERIC AS value, created_at
-  FROM rpm
-  WHERE DATE(created_at) = COALESCE($1::date, CURRENT_DATE)
-
-  ORDER BY created_at DESC;
+  CREATE INDEX IF NOT EXISTS idx_${TABLE_NAME}_sensor_time
+    ON ${TABLE_NAME} (sensor_type, created_at);
 `;
 
-// Create all measurement tables at once
-export const CREATE_ALL_TABLES: string = `
-  CREATE TABLE IF NOT EXISTS kwh (
+export const CREATE_ARCHIVE_TABLE = `
+  CREATE TABLE IF NOT EXISTS ${ARCHIVE_TABLE_NAME} (
     id SERIAL PRIMARY KEY,
-    kwh NUMERIC NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    sensor_type TEXT NOT NULL,
+    value NUMERIC NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL
   );
 
-  CREATE TABLE IF NOT EXISTS voltage (
-    id SERIAL PRIMARY KEY,
-    voltage NUMERIC NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-  );
+  CREATE INDEX IF NOT EXISTS idx_${ARCHIVE_TABLE_NAME}_sensor_time
+    ON ${ARCHIVE_TABLE_NAME} (sensor_type, created_at);
+`;
 
-  CREATE TABLE IF NOT EXISTS temperature (
-    id SERIAL PRIMARY KEY,
-    temperature NUMERIC NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-  );
+// ==============================
+// Unified View
+// ==============================
+export const CREATE_UNIFIED_VIEW = `
+  CREATE OR REPLACE VIEW ${UNIFIED_VIEW_NAME} AS
+  SELECT id, sensor_type, value, created_at, false AS archived
+  FROM ${TABLE_NAME}
+  UNION ALL
+  SELECT id, sensor_type, value, created_at, true AS archived
+  FROM ${ARCHIVE_TABLE_NAME};
+`;
 
-  CREATE TABLE IF NOT EXISTS rpm (
-    id SERIAL PRIMARY KEY,
-    rpm NUMERIC NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-  );
+// ==============================
+// Insert
+// ==============================
+export const INSERT_MEASUREMENT = `
+  INSERT INTO ${TABLE_NAME} (sensor_type, value, created_at)
+  VALUES ($1, $2, NOW())
+  RETURNING *;
+`;
+
+// ==============================
+// Range Queries (Raw + Archive + Unified)
+// ==============================
+export const SELECT_BY_RANGE = (source: string) => `
+  SELECT sensor_type, id, value, created_at,
+         ${source.includes("archived") ? "true" : source.includes(TABLE_NAME) ? "false" : "archived"} AS archived
+  FROM ${source}
+  WHERE created_at BETWEEN $1::timestamptz AND $2::timestamptz
+  ORDER BY created_at ASC;
+`;
+
+export const SELECT_BY_TYPE_AND_RANGE = (source: string) => `
+  SELECT sensor_type, id, value, created_at,
+         ${source.includes("archived") ? "true" : source.includes(TABLE_NAME) ? "false" : "archived"} AS archived
+  FROM ${source}
+  WHERE sensor_type = $1
+    AND created_at BETWEEN $2::timestamptz AND $3::timestamptz
+  ORDER BY created_at ASC;
+`;
+
+// ==============================
+// Aggregates
+// ==============================
+export const CREATE_HOURLY_AGG_VIEW = `
+  CREATE MATERIALIZED VIEW IF NOT EXISTS ${HOURLY_VIEW_NAME} AS
+  SELECT 
+    sensor_type,
+    date_trunc('hour', created_at) AS bucket,
+    min(value) AS min_value,
+    max(value) AS max_value,
+    avg(value) AS avg_value,
+    count(*) AS samples
+  FROM ${UNIFIED_VIEW_NAME}
+  GROUP BY sensor_type, date_trunc('hour', created_at);
+
+  CREATE INDEX IF NOT EXISTS idx_${HOURLY_VIEW_NAME}_sensor_time
+    ON ${HOURLY_VIEW_NAME} (sensor_type, bucket);
+`;
+
+export const CREATE_DAILY_AGG_VIEW = `
+  CREATE MATERIALIZED VIEW IF NOT EXISTS ${DAILY_VIEW_NAME} AS
+  SELECT 
+    sensor_type,
+    date_trunc('day', created_at) AS bucket,
+    min(value) AS min_value,
+    max(value) AS max_value,
+    avg(value) AS avg_value,
+    count(*) AS samples
+  FROM ${UNIFIED_VIEW_NAME}
+  GROUP BY sensor_type, date_trunc('day', created_at);
+
+  CREATE INDEX IF NOT EXISTS idx_${DAILY_VIEW_NAME}_sensor_time
+    ON ${DAILY_VIEW_NAME} (sensor_type, bucket);
+`;
+
+export const REFRESH_HOURLY_AGG_VIEW = `
+  REFRESH MATERIALIZED VIEW CONCURRENTLY ${HOURLY_VIEW_NAME};
+`;
+
+export const REFRESH_DAILY_AGG_VIEW = `
+  REFRESH MATERIALIZED VIEW CONCURRENTLY ${DAILY_VIEW_NAME};
+`;
+
+// ==============================
+// Retention
+// ==============================
+export const ARCHIVE_OLD_DATA = (days: number) => `
+  INSERT INTO ${ARCHIVE_TABLE_NAME} (sensor_type, value, created_at)
+  SELECT sensor_type, value, created_at
+  FROM ${TABLE_NAME}
+  WHERE created_at < NOW() - INTERVAL '${days} days';
+`;
+
+export const DELETE_OLD_DATA = (days: number) => `
+  DELETE FROM ${TABLE_NAME}
+  WHERE created_at < NOW() - INTERVAL '${days} days';
 `;
