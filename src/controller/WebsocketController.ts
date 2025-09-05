@@ -3,7 +3,7 @@ import {
   createMeasurement,
   selectByRange,
   selectByTypeAndRange,
-  createTablesAndViews
+  createTablesAndViews,
 } from "../service/measurementService";
 import { webSocketService } from "../service/websocketService";
 import { Data, Topic } from "../types/types";
@@ -32,9 +32,9 @@ class WebsocketController {
   constructor() {
     const createTable = async () => {
       await createTablesAndViews();
-    }
+    };
     createTable();
-    
+
     mqttService.onMessage = async (topic: string, message: string) => {
       const value = Number(message);
       if (!isNaN(value)) {
