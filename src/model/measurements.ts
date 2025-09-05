@@ -24,6 +24,13 @@ export const CREATE_MEASUREMENTS_TABLE = `
 
   CREATE INDEX IF NOT EXISTS idx_${TABLE_NAME}_sensor_time
     ON ${TABLE_NAME} (sensor_type, created_at);
+
+  CREATE INDEX IF NOT EXISTS idx_${TABLE_NAME}_created_at
+    ON ${TABLE_NAME} (created_at);
+
+  -- Prevent duplicate rows per sensor + timestamp
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_${TABLE_NAME}_unique
+    ON ${TABLE_NAME} (sensor_type, created_at);
 `;
 
 export const CREATE_ARCHIVE_TABLE = `
@@ -35,6 +42,13 @@ export const CREATE_ARCHIVE_TABLE = `
   );
 
   CREATE INDEX IF NOT EXISTS idx_${ARCHIVE_TABLE_NAME}_sensor_time
+    ON ${ARCHIVE_TABLE_NAME} (sensor_type, created_at);
+
+  CREATE INDEX IF NOT EXISTS idx_${ARCHIVE_TABLE_NAME}_created_at
+    ON ${ARCHIVE_TABLE_NAME} (created_at);
+
+  -- Prevent duplicate rows per sensor + timestamp
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_${ARCHIVE_TABLE_NAME}_unique
     ON ${ARCHIVE_TABLE_NAME} (sensor_type, created_at);
 `;
 
@@ -51,11 +65,12 @@ export const CREATE_UNIFIED_VIEW = `
 `;
 
 // ==============================
-// Insert
+// Insert (safe dedup)
 // ==============================
 export const INSERT_MEASUREMENT = `
   INSERT INTO ${TABLE_NAME} (sensor_type, value, created_at)
-  VALUES ($1, $2, NOW())
+  VALUES ($1, $2, COALESCE($3, NOW()))
+  ON CONFLICT (sensor_type, created_at) DO NOTHING
   RETURNING *;
 `;
 
@@ -168,14 +183,23 @@ export const REFRESH_DAILY_AGG_VIEW = `
 // ==============================
 // Retention
 // ==============================
+// Archive old data safely (ignore duplicates)
 export const ARCHIVE_OLD_DATA = (days: number) => `
   INSERT INTO ${ARCHIVE_TABLE_NAME} (sensor_type, value, created_at)
   SELECT sensor_type, value, created_at
   FROM ${TABLE_NAME}
-  WHERE created_at < NOW() - INTERVAL '${days} days';
+  WHERE created_at < NOW() - INTERVAL '${days} days'
+  ON CONFLICT (sensor_type, created_at) DO NOTHING;
 `;
 
+// Delete only if successfully archived
 export const DELETE_OLD_DATA = (days: number) => `
-  DELETE FROM ${TABLE_NAME}
-  WHERE created_at < NOW() - INTERVAL '${days} days';
+  DELETE FROM ${TABLE_NAME} m
+  WHERE created_at < NOW() - INTERVAL '${days} days'
+    AND EXISTS (
+      SELECT 1
+      FROM ${ARCHIVE_TABLE_NAME} a
+      WHERE a.sensor_type = m.sensor_type
+        AND a.created_at = m.created_at
+    );
 `;
