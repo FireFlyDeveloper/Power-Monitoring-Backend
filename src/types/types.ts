@@ -18,3 +18,9 @@ export interface ClientInfo {
   ws: WSContext;
   lastPing?: number;
 }
+
+export interface BufferedMeasurement {
+  sensorType: string;
+  value: number;
+  createdAt: Date;
+}

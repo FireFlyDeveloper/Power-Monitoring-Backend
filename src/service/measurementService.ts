@@ -18,9 +18,8 @@ import {
   ARCHIVE_OLD_DATA,
   DELETE_OLD_DATA,
   RETENTION_DAYS,
-  HOURLY_AGG_THRESHOLD,
-  DAILY_AGG_THRESHOLD,
 } from "../model/measurements";
+import { BufferedMeasurement } from "../types/types";
 
 // ==============================
 // Initialize Tables + Views
@@ -37,15 +36,6 @@ export const createTablesAndViews = async () => {
     console.error("❌ Error initializing schema:", error);
   }
 };
-
-// ==============================
-// Buffered Insert Logic
-// ==============================
-interface BufferedMeasurement {
-  sensorType: string;
-  value: number;
-  createdAt: Date;
-}
 
 const buffer: BufferedMeasurement[] = [];
 const BATCH_SIZE = 100; // flush if buffer reaches this size
@@ -69,11 +59,15 @@ async function flushBuffer() {
 
     const query = `
       INSERT INTO ${TABLE_NAME} (sensor_type, value, created_at)
-      VALUES ${values};
+      VALUES ${values}
+      ON CONFLICT (sensor_type, created_at) DO NOTHING;
     `;
 
-    await client.query(query, params);
-    console.log(`📥 Flushed ${rows.length} measurements to DB`);
+    const res = await client.query(query, params);
+    const inserted = res.rowCount ?? 0;
+    console.log(
+      `📥 Flushed ${rows.length} measurements (inserted: ${inserted}, skipped duplicates: ${rows.length - inserted})`,
+    );
   } catch (error) {
     console.error("❌ Error flushing buffer:", error);
     // ⚠️ in production, add a retry/dead-letter queue
