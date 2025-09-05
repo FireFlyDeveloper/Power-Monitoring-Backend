@@ -115,16 +115,19 @@ function pickSourceForRange(start: string, end: string): string {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - RETENTION_DAYS);
 
-  const daysRange =
-    (endDate.getTime() - startDate.getTime()) / (1000 * 3600 * 24);
+  const hoursRange = (endDate.getTime() - startDate.getTime()) / (1000 * 3600);
+  const daysRange = hoursRange / 24;
 
-  if (daysRange > DAILY_AGG_THRESHOLD) return DAILY_VIEW_NAME;
-  if (daysRange > HOURLY_AGG_THRESHOLD) return HOURLY_VIEW_NAME;
+  if (hoursRange <= 1) {
+    // up to 1 hour -> raw
+    if (endDate >= cutoff && startDate >= cutoff) return TABLE_NAME;
+    if (endDate < cutoff) return ARCHIVE_TABLE_NAME;
+    return UNIFIED_VIEW_NAME;
+  }
 
-  if (endDate >= cutoff && startDate >= cutoff) return TABLE_NAME;
-  if (endDate < cutoff) return ARCHIVE_TABLE_NAME;
-
-  return UNIFIED_VIEW_NAME;
+  if (daysRange <= 7) return HOURLY_VIEW_NAME; // 1h–7d → hourly buckets
+  if (daysRange <= 180) return DAILY_VIEW_NAME; // >7d–180d → daily
+  return DAILY_VIEW_NAME; // fallback
 }
 
 // ==============================

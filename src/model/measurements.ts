@@ -60,24 +60,67 @@ export const INSERT_MEASUREMENT = `
 `;
 
 // ==============================
-// Range Queries (Raw + Archive + Unified)
+// Range Queries (Raw + Archive + Aggregates)
 // ==============================
-export const SELECT_BY_RANGE = (source: string) => `
-  SELECT sensor_type, id, value, created_at,
-         ${source.includes("archived") ? "true" : source.includes(TABLE_NAME) ? "false" : "archived"} AS archived
-  FROM ${source}
-  WHERE created_at BETWEEN $1::timestamptz AND $2::timestamptz
-  ORDER BY created_at ASC;
-`;
+export const SELECT_BY_RANGE = (source: string) => {
+  if (source === HOURLY_VIEW_NAME || source === DAILY_VIEW_NAME) {
+    return `
+      SELECT 
+        sensor_type,
+        bucket AS created_at,
+        min_value,
+        max_value,
+        avg_value,
+        samples
+      FROM ${source}
+      WHERE bucket BETWEEN $1::timestamptz AND $2::timestamptz
+      ORDER BY bucket ASC;
+    `;
+  }
 
-export const SELECT_BY_TYPE_AND_RANGE = (source: string) => `
-  SELECT sensor_type, id, value, created_at,
-         ${source.includes("archived") ? "true" : source.includes(TABLE_NAME) ? "false" : "archived"} AS archived
-  FROM ${source}
-  WHERE sensor_type = $1
-    AND created_at BETWEEN $2::timestamptz AND $3::timestamptz
-  ORDER BY created_at ASC;
-`;
+  return `
+    SELECT 
+      sensor_type,
+      id,
+      value,
+      created_at,
+      ${source.includes("archived") ? "true" : source.includes(TABLE_NAME) ? "false" : "archived"} AS archived
+    FROM ${source}
+    WHERE created_at BETWEEN $1::timestamptz AND $2::timestamptz
+    ORDER BY created_at ASC;
+  `;
+};
+
+export const SELECT_BY_TYPE_AND_RANGE = (source: string) => {
+  if (source === HOURLY_VIEW_NAME || source === DAILY_VIEW_NAME) {
+    return `
+      SELECT 
+        sensor_type,
+        bucket AS created_at,
+        min_value,
+        max_value,
+        avg_value,
+        samples
+      FROM ${source}
+      WHERE sensor_type = $1
+        AND bucket BETWEEN $2::timestamptz AND $3::timestamptz
+      ORDER BY bucket ASC;
+    `;
+  }
+
+  return `
+    SELECT 
+      sensor_type,
+      id,
+      value,
+      created_at,
+      ${source.includes("archived") ? "true" : source.includes(TABLE_NAME) ? "false" : "archived"} AS archived
+    FROM ${source}
+    WHERE sensor_type = $1
+      AND created_at BETWEEN $2::timestamptz AND $3::timestamptz
+    ORDER BY created_at ASC;
+  `;
+};
 
 // ==============================
 // Aggregates
@@ -94,7 +137,7 @@ export const CREATE_HOURLY_AGG_VIEW = `
   FROM ${UNIFIED_VIEW_NAME}
   GROUP BY sensor_type, date_trunc('hour', created_at);
 
-  CREATE INDEX IF NOT EXISTS idx_${HOURLY_VIEW_NAME}_sensor_time
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_${HOURLY_VIEW_NAME}_unique
     ON ${HOURLY_VIEW_NAME} (sensor_type, bucket);
 `;
 
@@ -110,7 +153,7 @@ export const CREATE_DAILY_AGG_VIEW = `
   FROM ${UNIFIED_VIEW_NAME}
   GROUP BY sensor_type, date_trunc('day', created_at);
 
-  CREATE INDEX IF NOT EXISTS idx_${DAILY_VIEW_NAME}_sensor_time
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_${DAILY_VIEW_NAME}_unique
     ON ${DAILY_VIEW_NAME} (sensor_type, bucket);
 `;
 
