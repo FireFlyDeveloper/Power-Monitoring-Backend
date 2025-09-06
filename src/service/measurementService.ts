@@ -47,6 +47,7 @@ async function flushBuffer() {
   const client = await pool.connect();
   try {
     const rows = buffer.splice(0, buffer.length); // drain buffer
+
     const values = rows
       .map((_, i) => `($${i * 3 + 1}, $${i * 3 + 2}, $${i * 3 + 3})`)
       .join(", ");
@@ -60,17 +61,20 @@ async function flushBuffer() {
     const query = `
       INSERT INTO ${TABLE_NAME} (sensor_type, value, created_at)
       VALUES ${values}
-      ON CONFLICT (sensor_type, created_at) DO NOTHING;
+      ON CONFLICT (sensor_type, created_at) DO NOTHING
     `;
 
     const res = await client.query(query, params);
+
     const inserted = res.rowCount ?? 0;
+    const skipped = rows.length - inserted;
+
     console.log(
-      `📥 Flushed ${rows.length} measurements (inserted: ${inserted}, skipped duplicates: ${rows.length - inserted})`,
+      `📥 Flushed ${rows.length} measurements (inserted: ${inserted}, skipped duplicates: ${skipped})`,
     );
   } catch (error) {
     console.error("❌ Error flushing buffer:", error);
-    // ⚠️ in production, add a retry/dead-letter queue
+    // ⚠️ in production, consider retry/dead-letter handling
   } finally {
     client.release();
   }
