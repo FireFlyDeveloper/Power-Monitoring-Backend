@@ -24,9 +24,7 @@ export const websocketMiddleware: MiddlewareHandler = async (
   c: Context,
   next: Next,
 ) => {
-  const cookieHeader = c.req.raw.headers.get("cookie") || "";
-  const cookies = parse(cookieHeader);
-  const token = cookies.session;
+  const token = c.req.query("token");
 
   if (!token) {
     return c.json({ message: "Unauthorized" }, 401);
