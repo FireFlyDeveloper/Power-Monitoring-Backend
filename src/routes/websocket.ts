@@ -9,7 +9,7 @@ const websocketRoute = new Hono();
 
 websocketRoute.get(
   "/data",
-  websocketMiddleware,
+  // websocketMiddleware,
   upgradeWebSocket((c) => {
     const clientId = Math.random().toString(36).substring(7);
 
