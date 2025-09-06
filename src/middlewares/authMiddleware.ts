@@ -28,6 +28,8 @@ export const websocketMiddleware: MiddlewareHandler = async (
   const cookies = parse(cookieHeader);
   const token = cookies.session;
 
+  console.log(token);
+
   if (!token) {
     return c.json({ message: "Unauthorized" }, 401);
   }
