@@ -11,6 +11,10 @@ export default class AuthController {
     create_database();
   }
 
+  async check(ctx: Context) {
+    return ctx.json({ "success": true });
+  }
+
   async refresh(ctx: Context) {
     const user = await ctx.req.json();
     console.log("Refresh token data:", user.username);
