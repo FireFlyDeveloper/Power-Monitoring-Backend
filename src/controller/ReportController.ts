@@ -74,7 +74,7 @@ class ReportController {
             - If **Temperature** correlates strongly with load or RPM changes, highlight potential thermal-driven load behaviors and cooling/heating impacts.
 
             ### Input (for model use only — do not reference in output)
-            Today: ${new Date().getMonth()} ${new Date().toISOString().slice(0,10)}, ${new Date().getFullYear()}
+            Today (Month-Day-Year): ${new Date().getMonth()}-${new Date().toISOString().slice(0,10)}-${new Date().getFullYear()}
             Month: ${msg.month}
             Year: ${msg.year ?? new Date().getFullYear()}
             Data (usage & sensor metrics): ${JSON.stringify(rows, null, 2)}
