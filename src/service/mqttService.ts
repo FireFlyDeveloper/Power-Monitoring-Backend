@@ -28,6 +28,7 @@ export default class MqttService {
       this.subscribe(Topic.RPM);
       this.subscribe(Topic.KWH);
       this.subscribe(Topic.VOLTAGE);
+      this.subscribe(Topic.CURRENT);
     });
 
     this.client.on("message", (topic, message) => {

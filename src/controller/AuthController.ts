@@ -12,7 +12,7 @@ export default class AuthController {
   }
 
   async check(ctx: Context) {
-    return ctx.json({ "success": true });
+    return ctx.json({ success: true });
   }
 
   async refresh(ctx: Context) {

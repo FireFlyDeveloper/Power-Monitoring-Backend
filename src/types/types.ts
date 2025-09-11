@@ -5,6 +5,7 @@ export interface Data {
   kwh: number;
   temperature: number;
   voltage: number;
+  current: number;
 }
 
 export const Topic = {
@@ -12,6 +13,7 @@ export const Topic = {
   KWH: "sensor/kwh",
   TEMPERATURE: "sensor/temperature",
   VOLTAGE: "sensor/voltage",
+  CURRENT: "sensor/current",
 };
 
 export interface ClientInfo {

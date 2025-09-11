@@ -17,6 +17,7 @@ class WebsocketController {
     kwh: 0,
     temperature: 0,
     voltage: 0,
+    current: 0,
   };
 
   private topicToSensor: Record<
@@ -27,6 +28,7 @@ class WebsocketController {
     [Topic.KWH]: { sensorType: "kwh", key: "kwh" },
     [Topic.TEMPERATURE]: { sensorType: "temperature", key: "temperature" },
     [Topic.VOLTAGE]: { sensorType: "voltage", key: "voltage" },
+    [Topic.CURRENT]: { sensorType: "current", key: "current" },
   };
 
   constructor() {
