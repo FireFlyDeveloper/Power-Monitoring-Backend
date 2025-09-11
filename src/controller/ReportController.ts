@@ -4,8 +4,11 @@ import { selectByRange } from "../service/measurementService";
 import { Context } from "hono";
 
 const apiKey = process.env.GEMINI_API_KEY;
+const ai = new GoogleGenAI({ apiKey });
 
-const ai = new GoogleGenAI({ apiKey: apiKey });
+// Simple in-memory cache
+type CacheEntry = { report: string; expiry: number };
+const reportCache = new Map<string, CacheEntry>();
 
 class ReportController {
   public async createReport(ctx: Context) {
@@ -16,9 +19,19 @@ class ReportController {
         return ctx.json({ error: `Missing month` });
       }
 
+      const year = msg.year ?? new Date().getFullYear();
+      const cacheKey = `${msg.month}-${year}`;
+
+      // Check cache
+      const cached = reportCache.get(cacheKey);
+      const now = Date.now();
+      if (cached && cached.expiry > now) {
+        return ctx.json({ report: cached.report, cached: true });
+      }
+
       let start: string, end: string;
       try {
-        ({ start, end } = getMonthRange(msg.month, msg.year));
+        ({ start, end } = getMonthRange(msg.month, year));
       } catch (err) {
         return ctx.json({ error: "Invalid month" });
       }
@@ -74,15 +87,24 @@ class ReportController {
             - If **Temperature** correlates strongly with load or RPM changes, highlight potential thermal-driven load behaviors and cooling/heating impacts.
 
             ### Input (for model use only — do not reference in output)
-            Today (Month-Day-Year): ${new Date().getMonth()}-${new Date().toISOString().slice(0,10)}-${new Date().getFullYear()}
+            Today (Month-Day-Year): ${new Date().getMonth()}-${new Date().toISOString().slice(0, 10)}-${new Date().getFullYear()}
             Month: ${msg.month}
             Year: ${msg.year ?? new Date().getFullYear()}
             Data (usage & sensor metrics): ${JSON.stringify(rows, null, 2)}
             <!-- NOTE: The block above is for internal consumption only. DO NOT PRINT OR REFERENCE THIS BLOCK IN THE REPORT. -->
             `,
-        });
+      });
 
-      return ctx.json({ report: response.text });
+      const report = response.text;
+
+      if (!report) {
+        return ctx.json({ error: "Something went wrong" });
+      }
+
+      // Save to cache (1 hour = 3600000 ms)
+      reportCache.set(cacheKey, { report, expiry: now + 3600000 });
+
+      return ctx.json({ report, cached: false });
     } catch (error) {
       console.error(`❌ Error handling message.`, error);
       return ctx.json({ error: "Invalid request format" });
