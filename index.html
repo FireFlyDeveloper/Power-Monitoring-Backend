@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Report Request</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        padding: 20px;
+      }
+      #output {
+        margin-top: 20px;
+        padding: 10px;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        background: #f9f9f9;
+        white-space: pre-wrap;
+      }
+      button {
+        padding: 10px 15px;
+        font-size: 14px;
+        border: none;
+        border-radius: 6px;
+        background: #007bff;
+        color: white;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #0056b3;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Generate Report</h1>
+    <button onclick="createReport()">Request Report</button>
+
+    <div id="output">Response will appear here...</div>
+
+    <script>
+      async function createReport() {
+        try {
+          const response = await fetch("http://localhost:3001/report/create", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ month: "september" }),
+          });
+
+          const data = await response.json(); // Parse JSON
+          document.getElementById("output").textContent =
+            data.report ?? "No report found";
+        } catch (error) {
+          document.getElementById("output").textContent = "Error: " + error;
+        }
+      }
+    </script>
+  </body>
+</html>

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { createBunWebSocket } from "hono/bun";
 import authRoute from "./routes/auth";
 import healthRoute from "./routes/health";
+import reportRoute from "./routes/report";
 import websocketRoute from "./routes/websocket";
 import { cors } from "hono/cors";
 
@@ -22,6 +23,7 @@ app.onError((err, c) => {
 app.route("/ws", websocketRoute);
 app.route("/health", healthRoute);
 app.route("/auth", authRoute);
+app.route("/report", reportRoute);
 
 export default {
   fetch: app.fetch,
