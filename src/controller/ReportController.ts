@@ -10,12 +10,15 @@ type CacheEntry = { data?: any[]; report?: string; expiry: number };
 const reportCache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = Number(process.env.REPORT_CACHE_TTL_MS) || 3600000; // default 1 hour
 
+// 🔒 Map to store ongoing report generation promises
+const reportLocks = new Map<string, Promise<any>>();
+
 class ReportController {
   constructor() {
-    // bind public handler methods so they keep the class `this` when used as route callbacks
     this.getRawData = this.getRawData.bind(this);
     this.createReport = this.createReport.bind(this);
   }
+
   private getCache(cacheKey: string): CacheEntry | null {
     const entry = reportCache.get(cacheKey);
     const now = Date.now();
@@ -29,7 +32,9 @@ class ReportController {
 
   private setCache(cacheKey: string, part: Partial<CacheEntry>) {
     const now = Date.now();
-    const existing = reportCache.get(cacheKey) || { expiry: now + CACHE_TTL_MS };
+    const existing = reportCache.get(cacheKey) || {
+      expiry: now + CACHE_TTL_MS,
+    };
     const merged: CacheEntry = {
       data: part.data ?? existing.data,
       report: part.report ?? existing.report,
@@ -41,41 +46,33 @@ class ReportController {
   public async getRawData(ctx: Context) {
     try {
       const msg = await ctx.req.json();
-
       if (!msg.month) {
         ctx.status(400);
         return ctx.json({ error: `Missing month` });
       }
 
       const year = msg.year ?? new Date().getFullYear();
-
-      // validate month/year and produce canonical range first
       let start: string, end: string;
       try {
         ({ start, end } = getMonthRange(msg.month, year));
-      } catch (err) {
+      } catch {
         ctx.status(400);
         return ctx.json({ error: "Invalid month" });
       }
 
-      const cacheKey = `${start}__${end}`; // canonical key: identical for same month/year
-
+      const cacheKey = `${start}__${end}`;
       const cached = this.getCache(cacheKey);
-      if (cached && cached.data) {
+      if (cached?.data) {
         return ctx.json({ data: cached.data, cached: true });
       }
 
-      // If cached report exists but not data, prefer reading from DB so raw data is returned
       const rows = await selectByRange(start, end);
-
-      if (!rows || !rows.length) {
+      if (!rows?.length) {
         ctx.status(404);
         return ctx.json({ error: "No data to report" });
       }
 
-      // store data in cache (merge with existing entry if present)
       this.setCache(cacheKey, { data: rows });
-
       return ctx.json({ data: rows, cached: false });
     } catch (error) {
       console.error(`❌ Error handling getRawData.`, error);
@@ -87,40 +84,46 @@ class ReportController {
   public async createReport(ctx: Context) {
     try {
       const msg = await ctx.req.json();
-
       if (!msg.month) {
         ctx.status(400);
         return ctx.json({ error: `Missing month` });
       }
 
       const year = msg.year ?? new Date().getFullYear();
-
       let start: string, end: string;
       try {
         ({ start, end } = getMonthRange(msg.month, year));
-      } catch (err) {
+      } catch {
         ctx.status(400);
         return ctx.json({ error: "Invalid month" });
       }
 
-      const cacheKey = `${start}__${end}`; // canonical key: identical for same month/year
-
+      const cacheKey = `${start}__${end}`;
       const cached = this.getCache(cacheKey);
-      // If a cached report exists and is fresh, return it immediately
-      if (cached && cached.report) {
+      if (cached?.report) {
         return ctx.json({ report: cached.report, cached: true });
       }
 
-      // If we have cached data (but not a report) use it; otherwise fetch from DB
-      let rows: any[] = cached && cached.data ? cached.data : await selectByRange(start, end);
-
-      if (!rows || !rows.length) {
-        ctx.status(404);
-        return ctx.json({ error: "No data to report" });
+      if (reportLocks.has(cacheKey)) {
+        console.log(
+          `⏳ Waiting for existing report generation for ${cacheKey}`,
+        );
+        await reportLocks.get(cacheKey);
+        const afterWait = this.getCache(cacheKey);
+        if (afterWait?.report) {
+          return ctx.json({ report: afterWait.report, cached: true });
+        }
       }
 
-      // Build prompt (keeps original instructions) but be defensive about the AI response format
-      const prompt = `
+      const lockPromise = (async () => {
+        try {
+          const rows = cached?.data ?? (await selectByRange(start, end));
+          if (!rows?.length) {
+            ctx.status(404);
+            return ctx.json({ error: "No data to report" });
+          }
+
+          const prompt = `
             You are a professional energy data analyst.  
             Produce a **Monthly Energy Usage Report** in Markdown, suitable for executives.  
             **Important constraints:**  
@@ -170,23 +173,33 @@ class ReportController {
             <!-- NOTE: The block above is for internal consumption only. DO NOT PRINT OR REFERENCE THIS BLOCK IN THE REPORT. -->
             `;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-      });
+          const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+          });
 
-      // Be resilient to different response shapes from the AI SDK
-      const anyResp: any = response as any;
-      const report = anyResp?.text ?? null;
+          const anyResp: any = response;
+          const report = anyResp?.text ?? null;
+          if (!report) {
+            throw new Error("AI returned no text");
+          }
 
+          this.setCache(cacheKey, { report, data: rows });
+          return report;
+        } finally {
+          reportLocks.delete(cacheKey);
+        }
+      })();
+
+      reportLocks.set(cacheKey, lockPromise);
+
+      const report = await lockPromise;
       if (!report) {
-        console.error("❌ AI returned no text", { response });
         ctx.status(500);
-        return ctx.json({ error: "Something went wrong generating the report" });
+        return ctx.json({
+          error: "Something went wrong generating the report",
+        });
       }
-
-      // persist both data and report to cache so subsequent calls (getRawData/createReport) benefit
-      this.setCache(cacheKey, { report, data: rows });
 
       return ctx.json({ report, cached: false });
     } catch (error) {
