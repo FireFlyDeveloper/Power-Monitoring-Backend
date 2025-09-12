@@ -8,43 +8,72 @@ const ai = new GoogleGenAI({ apiKey });
 
 type CacheEntry = { data?: any[]; report?: string; expiry: number };
 const reportCache = new Map<string, CacheEntry>();
+const CACHE_TTL_MS = Number(process.env.REPORT_CACHE_TTL_MS) || 3600000;
 
 class ReportController {
+  private getCache(cacheKey: string): CacheEntry | null {
+    const entry = reportCache.get(cacheKey);
+    const now = Date.now();
+    if (!entry) return null;
+    if (entry.expiry <= now) {
+      reportCache.delete(cacheKey);
+      return null;
+    }
+    return entry;
+  }
+
+  private setCache(cacheKey: string, part: Partial<CacheEntry>) {
+    const now = Date.now();
+    const existing = reportCache.get(cacheKey) || {
+      expiry: now + CACHE_TTL_MS,
+    };
+    const merged: CacheEntry = {
+      data: part.data ?? existing.data,
+      report: part.report ?? existing.report,
+      expiry: now + CACHE_TTL_MS,
+    };
+    reportCache.set(cacheKey, merged);
+  }
+
   public async getRawData(ctx: Context) {
     try {
       const msg = await ctx.req.json();
 
       if (!msg.month) {
+        ctx.status(400);
         return ctx.json({ error: `Missing month` });
       }
 
       const year = msg.year ?? new Date().getFullYear();
-      const cacheKey = `${msg.month}-${year}`;
-
-      const cached = reportCache.get(cacheKey);
-      const now = Date.now();
-      if (cached && cached.expiry > now) {
-        return ctx.json({ report: cached.report, cached: true });
-      }
 
       let start: string, end: string;
       try {
         ({ start, end } = getMonthRange(msg.month, year));
       } catch (err) {
+        ctx.status(400);
         return ctx.json({ error: "Invalid month" });
+      }
+
+      const cacheKey = `${start}__${end}`;
+
+      const cached = this.getCache(cacheKey);
+      if (cached && cached.data) {
+        return ctx.json({ data: cached.data, cached: true });
       }
 
       const rows = await selectByRange(start, end);
 
-      if (!rows.length) {
+      if (!rows || !rows.length) {
+        ctx.status(404);
         return ctx.json({ error: "No data to report" });
       }
 
-      reportCache.set(cacheKey, { data: rows, expiry: now + 3600000 });
+      this.setCache(cacheKey, { data: rows });
 
       return ctx.json({ data: rows, cached: false });
     } catch (error) {
-      console.error(`❌ Error handling message.`, error);
+      console.error(`❌ Error handling getRawData.`, error);
+      ctx.status(500);
       return ctx.json({ error: "Something went wrong" });
     }
   }
@@ -54,34 +83,36 @@ class ReportController {
       const msg = await ctx.req.json();
 
       if (!msg.month) {
+        ctx.status(400);
         return ctx.json({ error: `Missing month` });
       }
 
       const year = msg.year ?? new Date().getFullYear();
-      const cacheKey = `${msg.month}-${year}`;
-
-      const cached = reportCache.get(cacheKey);
-      const now = Date.now();
-      if (cached && cached.expiry > now) {
-        return ctx.json({ report: cached.report, cached: true });
-      }
 
       let start: string, end: string;
       try {
         ({ start, end } = getMonthRange(msg.month, year));
       } catch (err) {
+        ctx.status(400);
         return ctx.json({ error: "Invalid month" });
       }
 
-      const rows = await selectByRange(start, end);
+      const cacheKey = `${start}__${end}`;
 
-      if (!rows.length) {
+      const cached = this.getCache(cacheKey);
+      if (cached && cached.report) {
+        return ctx.json({ report: cached.report, cached: true });
+      }
+
+      let rows: any[] =
+        cached && cached.data ? cached.data : await selectByRange(start, end);
+
+      if (!rows || !rows.length) {
+        ctx.status(404);
         return ctx.json({ error: "No data to report" });
       }
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: `
+      const prompt = `
             You are a professional energy data analyst.  
             Produce a **Monthly Energy Usage Report** in Markdown, suitable for executives.  
             **Important constraints:**  
@@ -124,25 +155,35 @@ class ReportController {
             - If **Temperature** correlates strongly with load or RPM changes, highlight potential thermal-driven load behaviors and cooling/heating impacts.
 
             ### Input (for model use only — do not reference in output)
-            Today (Month-Day-Year): ${new Date().getMonth()}-${new Date().toISOString().slice(0, 10)}-${new Date().getFullYear()}
+            Today (Month-Day-Year): ${new Date().toLocaleDateString()}
             Month: ${msg.month}
-            Year: ${msg.year ?? new Date().getFullYear()}
+            Year: ${year}
             Data (usage & sensor metrics): ${JSON.stringify(rows, null, 2)}
             <!-- NOTE: The block above is for internal consumption only. DO NOT PRINT OR REFERENCE THIS BLOCK IN THE REPORT. -->
-            `,
+            `;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt,
       });
 
-      const report = response.text;
+      const anyResp: any = response as any;
+      const report = anyResp?.text ?? null;
 
       if (!report) {
-        return ctx.json({ error: "Something went wrong" });
+        console.error("❌ AI returned no text", { response });
+        ctx.status(500);
+        return ctx.json({
+          error: "Something went wrong generating the report",
+        });
       }
 
-      reportCache.set(cacheKey, { report, expiry: now + 3600000 });
+      this.setCache(cacheKey, { report, data: rows });
 
       return ctx.json({ report, cached: false });
     } catch (error) {
-      console.error(`❌ Error handling message.`, error);
+      console.error(`❌ Error handling createReport.`, error);
+      ctx.status(400);
       return ctx.json({ error: "Invalid request format" });
     }
   }
