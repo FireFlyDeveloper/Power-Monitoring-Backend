@@ -6,11 +6,49 @@ import { Context } from "hono";
 const apiKey = process.env.GEMINI_API_KEY;
 const ai = new GoogleGenAI({ apiKey });
 
-// Simple in-memory cache
-type CacheEntry = { report: string; expiry: number };
+type CacheEntry = { data?: any[]; report?: string; expiry: number };
 const reportCache = new Map<string, CacheEntry>();
 
 class ReportController {
+  public async getRawData(ctx: Context) {
+    try {
+      const msg = await ctx.req.json();
+
+      if (!msg.month) {
+        return ctx.json({ error: `Missing month` });
+      }
+
+      const year = msg.year ?? new Date().getFullYear();
+      const cacheKey = `${msg.month}-${year}`;
+
+      const cached = reportCache.get(cacheKey);
+      const now = Date.now();
+      if (cached && cached.expiry > now) {
+        return ctx.json({ report: cached.report, cached: true });
+      }
+
+      let start: string, end: string;
+      try {
+        ({ start, end } = getMonthRange(msg.month, year));
+      } catch (err) {
+        return ctx.json({ error: "Invalid month" });
+      }
+
+      const rows = await selectByRange(start, end);
+
+      if (!rows.length) {
+        return ctx.json({ error: "No data to report" });
+      }
+
+      reportCache.set(cacheKey, { data: rows, expiry: now + 3600000 });
+
+      return ctx.json({ data: rows, cached: false });
+    } catch (error) {
+      console.error(`❌ Error handling message.`, error);
+      return ctx.json({ error: "Something went wrong" });
+    }
+  }
+
   public async createReport(ctx: Context) {
     try {
       const msg = await ctx.req.json();
@@ -22,7 +60,6 @@ class ReportController {
       const year = msg.year ?? new Date().getFullYear();
       const cacheKey = `${msg.month}-${year}`;
 
-      // Check cache
       const cached = reportCache.get(cacheKey);
       const now = Date.now();
       if (cached && cached.expiry > now) {
@@ -101,7 +138,6 @@ class ReportController {
         return ctx.json({ error: "Something went wrong" });
       }
 
-      // Save to cache (1 hour = 3600000 ms)
       reportCache.set(cacheKey, { report, expiry: now + 3600000 });
 
       return ctx.json({ report, cached: false });
