@@ -26,3 +26,7 @@ export interface BufferedMeasurement {
   value: number;
   createdAt: Date;
 }
+
+export type CacheEntry = { data?: any[]; report?: string; expiry: number };
+
+export type HistoryCacheEntry = { data: any[]; expiry: number };

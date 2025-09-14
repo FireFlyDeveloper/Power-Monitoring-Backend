@@ -3,11 +3,11 @@ import { getMonthRange } from "../utils/getMonthRange";
 import { selectByRange } from "../service/measurementService";
 import { Context } from "hono";
 import { withRetry } from "../utils/retry";
+import { CacheEntry } from "../types/types";
 
 const apiKey = process.env.GEMINI_API_KEY;
 const ai = new GoogleGenAI({ apiKey });
 
-type CacheEntry = { data?: any[]; report?: string; expiry: number };
 const reportCache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = Number(process.env.REPORT_CACHE_TTL_MS) || 3600000; // default 1 hour
 

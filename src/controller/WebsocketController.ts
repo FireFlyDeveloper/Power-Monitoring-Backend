@@ -6,12 +6,33 @@ import {
   createTablesAndViews,
 } from "../service/measurementService";
 import { webSocketService } from "../service/websocketService";
-import { Data, Topic } from "../types/types";
+import { Data, HistoryCacheEntry, Topic } from "../types/types";
 import { WSContext } from "hono/ws";
 
 const mqttService = new MqttService();
 
+const historyCache = new Map<string, HistoryCacheEntry>();
+const HISTORY_CACHE_TTL_MS = Number(process.env.HISTORY_CACHE_TTL_MS) || 30000;
+
 class WebsocketController {
+  private getHistoryCache(cacheKey: string): HistoryCacheEntry | null {
+    const entry = historyCache.get(cacheKey);
+    const now = Date.now();
+    if (!entry) return null;
+    if (entry.expiry <= now) {
+      historyCache.delete(cacheKey);
+      return null;
+    }
+    return entry;
+  }
+
+  private setHistoryCache(cacheKey: string, data: any[]) {
+    historyCache.set(cacheKey, {
+      data,
+      expiry: Date.now() + HISTORY_CACHE_TTL_MS,
+    });
+  }
+
   private lastData: Data = {
     rpm: 0,
     kwh: 0,
@@ -88,14 +109,52 @@ class WebsocketController {
         }
         case "getHistory": {
           const { start, end } = msg;
+          const cacheKey = `history__${start}__${end}`;
+
+          const cached = this.getHistoryCache(cacheKey);
+          if (cached) {
+            ws.send(
+              JSON.stringify({
+                action: "history",
+                data: cached.data,
+                cached: true,
+              }),
+            );
+            break;
+          }
+
           const rows = await selectByRange(start, end);
-          ws.send(JSON.stringify({ action: "history", data: rows }));
+          this.setHistoryCache(cacheKey, rows);
+          ws.send(
+            JSON.stringify({ action: "history", data: rows, cached: false }),
+          );
           break;
         }
         case "getHistoryByType": {
           const { sensorType, start, end } = msg;
+          const cacheKey = `historyByType__${sensorType}__${start}__${end}`;
+
+          const cached = this.getHistoryCache(cacheKey);
+          if (cached) {
+            ws.send(
+              JSON.stringify({
+                action: "historyByType",
+                data: cached.data,
+                cached: true,
+              }),
+            );
+            break;
+          }
+
           const rows = await selectByTypeAndRange(sensorType, start, end);
-          ws.send(JSON.stringify({ action: "historyByType", data: rows }));
+          this.setHistoryCache(cacheKey, rows);
+          ws.send(
+            JSON.stringify({
+              action: "historyByType",
+              data: rows,
+              cached: false,
+            }),
+          );
           break;
         }
         default:
