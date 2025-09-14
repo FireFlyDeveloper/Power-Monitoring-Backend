@@ -2,6 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import { getMonthRange } from "../utils/getMonthRange";
 import { selectByRange } from "../service/measurementService";
 import { Context } from "hono";
+import { withRetry } from "../utils/retry";
 
 const apiKey = process.env.GEMINI_API_KEY;
 const ai = new GoogleGenAI({ apiKey });
@@ -10,8 +11,8 @@ type CacheEntry = { data?: any[]; report?: string; expiry: number };
 const reportCache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = Number(process.env.REPORT_CACHE_TTL_MS) || 3600000; // default 1 hour
 
-// 🔒 Map to store ongoing report generation promises
 const reportLocks = new Map<string, Promise<any>>();
+const rawDataLocks = new Map<string, Promise<any>>();
 
 class ReportController {
   constructor() {
@@ -66,13 +67,38 @@ class ReportController {
         return ctx.json({ data: cached.data, cached: true });
       }
 
-      const rows = await selectByRange(start, end);
-      if (!rows?.length) {
-        ctx.status(404);
-        return ctx.json({ error: "No data to report" });
+      if (rawDataLocks.has(cacheKey)) {
+        console.log(`⏳ Waiting for existing raw data fetch for ${cacheKey}`);
+        await rawDataLocks.get(cacheKey);
+        const afterWait = this.getCache(cacheKey);
+        if (afterWait?.data) {
+          return ctx.json({ data: afterWait.data, cached: true });
+        }
       }
 
-      this.setCache(cacheKey, { data: rows });
+      const lockPromise = (async () => {
+        try {
+          const rows = await selectByRange(start, end);
+          if (!rows?.length) {
+            ctx.status(404);
+            return ctx.json({ error: "No data to report" });
+          }
+
+          this.setCache(cacheKey, { data: rows });
+          return rows;
+        } finally {
+          rawDataLocks.delete(cacheKey);
+        }
+      })();
+
+      rawDataLocks.set(cacheKey, lockPromise);
+
+      const rows = await lockPromise;
+      if (!rows) {
+        ctx.status(500);
+        return ctx.json({ error: "Something went wrong fetching raw data" });
+      }
+
       return ctx.json({ data: rows, cached: false });
     } catch (error) {
       console.error(`❌ Error handling getRawData.`, error);
@@ -173,19 +199,24 @@ class ReportController {
             <!-- NOTE: The block above is for internal consumption only. DO NOT PRINT OR REFERENCE THIS BLOCK IN THE REPORT. -->
             `;
 
-          const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: prompt,
-          });
+          const response = await withRetry(
+            async () => {
+              const r = await ai.models.generateContent({
+                model: "gemini-2.5-flash",
+                contents: prompt,
+              });
 
-          const anyResp: any = response;
-          const report = anyResp?.text ?? null;
-          if (!report) {
-            throw new Error("AI returned no text");
-          }
+              const anyResp: any = r;
+              const report = anyResp?.text ?? null;
+              if (!report) throw new Error("AI returned no text");
+              return report;
+            },
+            3,
+            1000,
+          );
 
-          this.setCache(cacheKey, { report, data: rows });
-          return report;
+          this.setCache(cacheKey, { report: response, data: rows });
+          return response;
         } finally {
           reportLocks.delete(cacheKey);
         }
