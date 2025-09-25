@@ -41,6 +41,23 @@ class WebsocketController {
     current: 0,
   };
 
+  private lastUpdateTimestamp: number = Date.now();
+  private systemCheckIntervalMs = 10000; // check every 10s
+  private systemTimeoutMs = 30000; // mark down if no data for 30s
+
+  private systemStatus = {
+    turbineOperational: true,
+    gridConnection: true,
+    sensorsActive: true,
+    lastUpdate: new Date(),
+    alerts: [] as {
+      id: string;
+      message: string;
+      severity: "info" | "warning" | "critical";
+      timestamp: Date;
+    }[],
+  };
+
   private topicToSensor: Record<
     string,
     { sensorType: string; key: keyof Data }
@@ -58,6 +75,7 @@ class WebsocketController {
     };
     createTable();
 
+    // Subscribe to MQTT
     mqttService.onMessage = async (topic: string, message: string) => {
       const value = Number(message);
       if (!isNaN(value)) {
@@ -66,6 +84,9 @@ class WebsocketController {
         console.warn(`⚠️ Non-numeric payload on topic ${topic}: ${message}`);
       }
     };
+
+    // Start periodic health check
+    setInterval(() => this.checkSystemHealth(), this.systemCheckIntervalMs);
   }
 
   private async handleIncomingMeasurement(
@@ -83,6 +104,7 @@ class WebsocketController {
     try {
       await createMeasurement(sensorType, value);
       this.lastData[key] = value;
+      this.lastUpdateTimestamp = Date.now();
 
       console.log(`✅ Stored ${sensorType}: ${value}`);
 
@@ -90,6 +112,63 @@ class WebsocketController {
     } catch (error) {
       console.error(`❌ Failed to process ${sensorType}:`, error);
     }
+  }
+
+  private checkSystemHealth() {
+    const now = Date.now();
+    let turbineOperational = true;
+    let gridConnection = true; // placeholder: extend with real grid checks later
+    let sensorsActive = true;
+
+    // Rule 1: no data received for too long
+    if (now - this.lastUpdateTimestamp > this.systemTimeoutMs) {
+      turbineOperational = false;
+      sensorsActive = false;
+      this.addAlert("critical", "No data received: system may be down");
+    }
+
+    // Rule 2: all values zero → turbine stopped
+    if (
+      this.lastData.rpm === 0 &&
+      this.lastData.voltage === 0 &&
+      this.lastData.current === 0
+    ) {
+      turbineOperational = false;
+      this.addAlert("warning", "Turbine not producing power (all values zero)");
+    }
+
+    this.systemStatus = {
+      ...this.systemStatus,
+      turbineOperational,
+      gridConnection,
+      sensorsActive,
+      lastUpdate: new Date(this.lastUpdateTimestamp),
+    };
+
+    // Broadcast system status
+    webSocketService.broadcastMessage({
+      action: "systemStatus",
+      data: this.systemStatus,
+    });
+  }
+
+  private addAlert(
+    severity: "info" | "warning" | "critical",
+    message: string,
+  ) {
+    const alert = {
+      id: `${Date.now()}`,
+      message,
+      severity,
+      timestamp: new Date(),
+    };
+
+    this.systemStatus.alerts.push(alert);
+
+    webSocketService.broadcastMessage({
+      action: "alert",
+      data: alert,
+    });
   }
 
   public async handleClientMessage(
@@ -176,6 +255,7 @@ class WebsocketController {
 
     // Send snapshot
     ws.send(JSON.stringify({ action: "lastData", data: this.getLastData() }));
+    ws.send(JSON.stringify({ action: "systemStatus", data: this.systemStatus }));
   }
 
   public handleDisconnection(clientId: string): void {
