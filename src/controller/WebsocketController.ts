@@ -15,6 +15,8 @@ const historyCache = new Map<string, HistoryCacheEntry>();
 const HISTORY_CACHE_TTL_MS = Number(process.env.HISTORY_CACHE_TTL_MS) || 30000;
 
 class WebsocketController {
+  private lastTemperatureUpdate: number = 0;
+  
   private getHistoryCache(cacheKey: string): HistoryCacheEntry | null {
     const entry = historyCache.get(cacheKey);
     const now = Date.now();
@@ -100,6 +102,15 @@ class WebsocketController {
     }
 
     const { sensorType, key } = mapping;
+
+    if (sensorType === "temperature") {
+      const now = Date.now();
+      if (now - this.lastTemperatureUpdate < 60_000) {
+        console.log(`⏸ Skipped temperature update (within 1 minute window)`);
+        return;
+      }
+      this.lastTemperatureUpdate = now;
+    }
 
     try {
       await createMeasurement(sensorType, value);
