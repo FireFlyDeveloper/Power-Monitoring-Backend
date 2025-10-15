@@ -16,7 +16,7 @@ const HISTORY_CACHE_TTL_MS = Number(process.env.HISTORY_CACHE_TTL_MS) || 30000;
 
 class WebsocketController {
   private lastTemperatureUpdate: number = 0;
-  
+
   private getHistoryCache(cacheKey: string): HistoryCacheEntry | null {
     const entry = historyCache.get(cacheKey);
     const now = Date.now();
@@ -163,10 +163,7 @@ class WebsocketController {
     });
   }
 
-  private addAlert(
-    severity: "info" | "warning" | "critical",
-    message: string,
-  ) {
+  private addAlert(severity: "info" | "warning" | "critical", message: string) {
     const alert = {
       id: `${Date.now()}`,
       message,
@@ -266,7 +263,9 @@ class WebsocketController {
 
     // Send snapshot
     ws.send(JSON.stringify({ action: "lastData", data: this.getLastData() }));
-    ws.send(JSON.stringify({ action: "systemStatus", data: this.systemStatus }));
+    ws.send(
+      JSON.stringify({ action: "systemStatus", data: this.systemStatus }),
+    );
   }
 
   public handleDisconnection(clientId: string): void {
