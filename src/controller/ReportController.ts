@@ -184,7 +184,7 @@ class ReportController {
           const response = await withRetry(
             async () => {
               const res = await fetch(
-                "http://192.168.100.99:5678/webhook-test/58e78957-782c-4dcc-bcbc-8017fbd3f03c",
+                "https://n8n.fireflylab.top/webhook/58e78957-782c-4dcc-bcbc-8017fbd3f03c",
                 {
                   method: "POST",
                   body: form,
