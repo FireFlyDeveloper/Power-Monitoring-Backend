@@ -148,19 +148,25 @@ class ReportController {
 
       const lockPromise = (async () => {
         try {
-          const rows: SensorRow[] = cached?.data ?? (await selectByRange(start, end));
+          const rows: SensorRow[] =
+            cached?.data ?? (await selectByRange(start, end));
           if (!rows?.length) {
             return ctx.json({ error: "No data to report" }, 404);
           }
 
-          const grouped = rows.reduce<Record<string, {
-            sensor_type: string;
-            date: string;
-            min_value: number;
-            max_value: number;
-            total_avg: number;
-            total_samples: number;
-          }>>((acc, row) => {
+          const grouped = rows.reduce<
+            Record<
+              string,
+              {
+                sensor_type: string;
+                date: string;
+                min_value: number;
+                max_value: number;
+                total_avg: number;
+                total_samples: number;
+              }
+            >
+          >((acc, row) => {
             const type = row.sensor_type;
             const dateKey = this.toDateKey(row.created_at);
             const key = `${type}_${dateKey}`;
@@ -189,14 +195,16 @@ class ReportController {
             return acc;
           }, {});
 
-          const aggregated: AggregatedSensor[] = Object.values(grouped).map(entry => ({
-            sensor_type: entry.sensor_type,
-            date: entry.date,
-            min_value: entry.min_value,
-            max_value: entry.max_value,
-            avg_value: entry.total_avg / entry.total_samples,
-            samples: entry.total_samples,
-          }));
+          const aggregated: AggregatedSensor[] = Object.values(grouped).map(
+            (entry) => ({
+              sensor_type: entry.sensor_type,
+              date: entry.date,
+              min_value: entry.min_value,
+              max_value: entry.max_value,
+              avg_value: entry.total_avg / entry.total_samples,
+              samples: entry.total_samples,
+            }),
+          );
 
           const response = await withRetry(
             async () => {
