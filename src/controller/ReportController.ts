@@ -5,7 +5,7 @@ import { withRetry } from "../utils/retry";
 import { CacheEntry } from "../types/types";
 import OpenAI from "openai";
 
-const apiKey = process.env.API_KEY;
+const apiKey = process.env.OPENAI_API_KEY;
 const client = new OpenAI({ apiKey: apiKey });
 
 const reportCache = new Map<string, CacheEntry>();
