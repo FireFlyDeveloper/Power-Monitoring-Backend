@@ -38,6 +38,7 @@ export type SensorRow = {
 
 export type AggregatedSensor = {
   sensor_type: string;
+  date: string;
   min_value: number;
   max_value: number;
   avg_value: number;

@@ -20,6 +20,11 @@ class ReportController {
     this.createReport = this.createReport.bind(this);
   }
 
+  private toDateKey(timestamp: number): string {
+    const date = new Date(timestamp * 1000);
+    return date.toISOString().split("T")[0];
+  }
+
   private getCache(cacheKey: string): CacheEntry | null {
     const entry = reportCache.get(cacheKey);
     const now = Date.now();
@@ -150,32 +155,35 @@ class ReportController {
 
           const grouped = rows.reduce<Record<string, {
             sensor_type: string;
+            date: string;
             min_value: number;
             max_value: number;
             total_avg: number;
             total_samples: number;
           }>>((acc, row) => {
             const type = row.sensor_type;
-            if (!type) return acc;
+            const dateKey = this.toDateKey(row.created_at);
+            const key = `${type}_${dateKey}`;
 
             const min = parseFloat(row.min_value);
             const max = parseFloat(row.max_value);
             const avg = parseFloat(row.avg_value);
             const samples = parseFloat(row.samples);
 
-            if (!acc[type]) {
-              acc[type] = {
+            if (!acc[key]) {
+              acc[key] = {
                 sensor_type: type,
+                date: dateKey,
                 min_value: min,
                 max_value: max,
                 total_avg: avg * samples,
                 total_samples: samples,
               };
             } else {
-              acc[type].min_value = Math.min(acc[type].min_value, min);
-              acc[type].max_value = Math.max(acc[type].max_value, max);
-              acc[type].total_avg += avg * samples;
-              acc[type].total_samples += samples;
+              acc[key].min_value = Math.min(acc[key].min_value, min);
+              acc[key].max_value = Math.max(acc[key].max_value, max);
+              acc[key].total_avg += avg * samples;
+              acc[key].total_samples += samples;
             }
 
             return acc;
@@ -183,6 +191,7 @@ class ReportController {
 
           const aggregated: AggregatedSensor[] = Object.values(grouped).map(entry => ({
             sensor_type: entry.sensor_type,
+            date: entry.date,
             min_value: entry.min_value,
             max_value: entry.max_value,
             avg_value: entry.total_avg / entry.total_samples,
